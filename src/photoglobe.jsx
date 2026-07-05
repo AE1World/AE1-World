@@ -72,9 +72,12 @@ function AuthModal({onClose,onAuth}){
 }
 
 // ── Globe Canvas ──
-function GlobeCanvas({photos, selectedId, onSelect, width, height}){
+function GlobeCanvas({photos, selectedId, onSelect, width, height, outerRef}){
   const globeRef = useRef();
   const containerRef = useRef();
+  useEffect(()=>{
+    if(outerRef) outerRef.current = globeRef;
+  },[outerRef]);
   const [GlobeComponent, setGlobeComponent] = useState(null);
   const [dims, setDims] = useState({w: width || window.innerWidth, h: height || window.innerHeight});
 
@@ -173,155 +176,71 @@ function PhotoListItem({photo, selected, onClick}){
   );
 }
 
-// ── Instagram Export Card ──
-function buildExportCard(photo){
-  const W=1080, H=1350;
-  const mapW=480, mapH=H;
-  const rightW=W-mapW;
-
+// ── Instagram Export ──
+function buildExportCard(photo,globeDataUrl){
+  const W=1080,H=1350,mapW=480,rightW=600,bodyH=H-110;
   const card=document.createElement('div');
   card.style.cssText=`position:fixed;left:-9999px;top:0;width:${W}px;height:${H}px;display:flex;flex-direction:column;font-family:'Cormorant Garamond',Georgia,serif;background:#FDFBF8;overflow:hidden;`;
-
-  // Header bar
   const hdr=document.createElement('div');
   hdr.style.cssText=`width:${W}px;height:60px;background:#2A2420;display:flex;align-items:center;justify-content:center;flex-shrink:0;`;
   hdr.innerHTML=`<span style="font-family:'Cormorant Garamond',Georgia,serif;font-size:16px;color:#C8956C;letter-spacing:8px;">S Æ-1 R I S</span>`;
   card.appendChild(hdr);
-
-  // Body row
   const body=document.createElement('div');
-  body.style.cssText=`display:flex;flex:1;overflow:hidden;`;
-
-  // Left — map via OpenStreetMap static tile centered on photo lat/lon
+  body.style.cssText=`display:flex;width:${W}px;height:${bodyH}px;overflow:hidden;flex:1;`;
+  // Left — globe snapshot
   const mapCol=document.createElement('div');
-  mapCol.style.cssText=`width:${mapW}px;height:${H-60-50}px;position:relative;background:#1a3a5c;flex-shrink:0;overflow:hidden;`;
-
-  const zoom=7;
-  const lat=photo.lat||0, lon=photo.lon||0;
-  const tileUrl=`https://tile.openstreetmap.org/${zoom}/${lon2tile(lon,zoom)}/${lat2tile(lat,zoom)}.png`;
-  const mapImg=document.createElement('img');
-  mapImg.crossOrigin='anonymous';
-  mapImg.style.cssText=`width:100%;height:100%;object-fit:cover;`;
-  mapImg.src=tileUrl;
-  mapCol.appendChild(mapImg);
-
-  // Aperture pin overlay centered
+  mapCol.style.cssText=`width:${mapW}px;height:${bodyH}px;position:relative;background:#1C2535;flex-shrink:0;overflow:hidden;`;
+  if(globeDataUrl){const gImg=document.createElement('img');gImg.style.cssText=`width:100%;height:100%;object-fit:cover;object-position:center;`;gImg.src=globeDataUrl;mapCol.appendChild(gImg);}
   const pinSvg=document.createElementNS('http://www.w3.org/2000/svg','svg');
-  pinSvg.setAttribute('width','60');pinSvg.setAttribute('height','60');
-  pinSvg.setAttribute('viewBox','0 0 60 60');
+  pinSvg.setAttribute('width','70');pinSvg.setAttribute('height','70');pinSvg.setAttribute('viewBox','0 0 70 70');
   pinSvg.style.cssText=`position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);`;
-  pinSvg.innerHTML=`
-    <circle cx="30" cy="30" r="28" fill="none" stroke="#C8956C" stroke-width="1.5" opacity="0.3"/>
-    <circle cx="30" cy="30" r="18" fill="none" stroke="#C8956C" stroke-width="2"/>
-    <circle cx="30" cy="30" r="5" fill="#C8956C"/>
-    ${[0,45,90,135].map(a=>{
-      const r=Math.PI*a/180;
-      const x1=(30+Math.cos(r)*19).toFixed(1), y1=(30+Math.sin(r)*19).toFixed(1);
-      const x2=(30+Math.cos(r)*27).toFixed(1), y2=(30+Math.sin(r)*27).toFixed(1);
-      const x3=(30-Math.cos(r)*19).toFixed(1), y3=(30-Math.sin(r)*19).toFixed(1);
-      const x4=(30-Math.cos(r)*27).toFixed(1), y4=(30-Math.sin(r)*27).toFixed(1);
-      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#C8956C" stroke-width="1.2" opacity="0.6"/>
-              <line x1="${x3}" y1="${y3}" x2="${x4}" y2="${y4}" stroke="#C8956C" stroke-width="1.2" opacity="0.6"/>`;
-    }).join('')}`;
+  pinSvg.innerHTML=`<circle cx="35" cy="35" r="32" fill="none" stroke="#C8956C" stroke-width="1.5" opacity="0.3"/><circle cx="35" cy="35" r="21" fill="none" stroke="#C8956C" stroke-width="2"/><circle cx="35" cy="35" r="5" fill="#C8956C"/>${[0,45,90,135].map(a=>{const r=Math.PI*a/180;return`<line x1="${(35+Math.cos(r)*22).toFixed(1)}" y1="${(35+Math.sin(r)*22).toFixed(1)}" x2="${(35+Math.cos(r)*31).toFixed(1)}" y2="${(35+Math.sin(r)*31).toFixed(1)}" stroke="#C8956C" stroke-width="1.2" opacity="0.6"/><line x1="${(35-Math.cos(r)*22).toFixed(1)}" y1="${(35-Math.sin(r)*22).toFixed(1)}" x2="${(35-Math.cos(r)*31).toFixed(1)}" y2="${(35-Math.sin(r)*31).toFixed(1)}" stroke="#C8956C" stroke-width="1.2" opacity="0.6"/>`;}).join('')}`;
   mapCol.appendChild(pinSvg);
-
-  // Location label
+  const lat=photo.lat||0,lon=photo.lon||0;
   const locLabel=document.createElement('div');
-  locLabel.style.cssText=`position:absolute;bottom:24px;left:20px;background:rgba(26,20,16,0.8);padding:10px 16px;`;
-  locLabel.innerHTML=`<div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:18px;color:#FDFBF8;">${photo.city||''}, ${photo.country||''}</div><div style="font-family:Arial,sans-serif;font-size:12px;color:#C8956C;letter-spacing:1px;margin-top:4px;">${(lat).toFixed(2)}° N · ${Math.abs(lon).toFixed(2)}° ${lon<0?'W':'E'}</div>`;
+  locLabel.style.cssText=`position:absolute;bottom:24px;left:20px;background:rgba(26,20,16,0.82);padding:10px 16px;`;
+  locLabel.innerHTML=`<div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:17px;color:#FDFBF8;">${photo.city||''}, ${photo.country||''}</div><div style="font-family:Arial,sans-serif;font-size:11px;color:#C8956C;letter-spacing:1px;margin-top:3px;">${lat.toFixed(2)}° N · ${Math.abs(lon).toFixed(2)}° ${lon<0?'W':'E'}</div>`;
   mapCol.appendChild(locLabel);
   body.appendChild(mapCol);
-
-  // Vertical divider
-  const div=document.createElement('div');
-  div.style.cssText=`width:2px;background:#C8956C;opacity:0.25;flex-shrink:0;`;
-  body.appendChild(div);
-
+  const divEl=document.createElement('div');
+  divEl.style.cssText=`width:2px;height:${bodyH}px;background:#C8956C;opacity:0.25;flex-shrink:0;`;
+  body.appendChild(divEl);
   // Right column
   const right=document.createElement('div');
-  right.style.cssText=`width:${rightW-2}px;display:flex;flex-direction:column;background:#FDFBF8;overflow:hidden;`;
-
-  // Photo snippet
+  right.style.cssText=`width:${rightW-2}px;height:${bodyH}px;display:flex;flex-direction:column;background:#FDFBF8;overflow:hidden;`;
+  // Photo snippet — cropped with object-fit cover
   const photoSnip=document.createElement('div');
-  photoSnip.style.cssText=`width:100%;height:360px;position:relative;background:#2A2420;flex-shrink:0;overflow:hidden;`;
-  if(photo.image_url){
-    const img=document.createElement('img');
-    img.crossOrigin='anonymous';
-    img.style.cssText=`width:100%;height:100%;object-fit:cover;`;
-    img.src=photo.image_url;
-    photoSnip.appendChild(img);
-  }
-  const overlay=document.createElement('div');
-  overlay.style.cssText=`position:absolute;bottom:0;left:0;right:0;padding:20px 24px;background:linear-gradient(to top,rgba(26,20,16,0.85) 0%,transparent 100%);`;
-  overlay.innerHTML=`<div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:20px;color:#FDFBF8;margin-bottom:4px;">${photo.title||''}</div><div style="font-family:Arial,sans-serif;font-size:11px;color:#C8956C;letter-spacing:1.5px;">${(photo.city||'').toUpperCase()}${photo.country?', '+(photo.country).toUpperCase():''}</div>`;
-  photoSnip.appendChild(overlay);
+  photoSnip.style.cssText=`width:100%;height:320px;position:relative;background:#2A2420;flex-shrink:0;overflow:hidden;`;
+  if(photo.image_url){const img=document.createElement('img');img.crossOrigin='anonymous';img.style.cssText=`width:100%;height:100%;object-fit:cover;object-position:center top;display:block;`;img.src=photo.image_url;photoSnip.appendChild(img);}
+  const photoOverlay=document.createElement('div');
+  photoOverlay.style.cssText=`position:absolute;bottom:0;left:0;right:0;padding:16px 20px;background:linear-gradient(to top,rgba(26,20,16,0.88) 0%,transparent 100%);`;
+  photoOverlay.innerHTML=`<div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:18px;color:#FDFBF8;margin-bottom:3px;line-height:1.2;">${photo.title||''}</div><div style="font-family:Arial,sans-serif;font-size:10px;color:#C8956C;letter-spacing:1.5px;">${(photo.city||'').toUpperCase()}${photo.country?', '+(photo.country).toUpperCase():''}</div>`;
+  photoSnip.appendChild(photoOverlay);
   right.appendChild(photoSnip);
-
-  // Settings area
+  // Settings
   const settings=document.createElement('div');
-  settings.style.cssText=`padding:20px 24px;flex:1;display:flex;flex-direction:column;gap:0;`;
-
-  // Camera label
-  const camLabel=document.createElement('div');
-  camLabel.style.cssText=`font-family:Arial,sans-serif;font-size:10px;color:#8A7A68;letter-spacing:2px;margin-bottom:6px;`;
-  camLabel.textContent='CAMERA & LENS';
-  settings.appendChild(camLabel);
-
-  const camVal=document.createElement('div');
-  camVal.style.cssText=`font-family:'Cormorant Garamond',Georgia,serif;font-size:17px;color:#2A2420;margin-bottom:3px;`;
-  camVal.textContent=photo.camera||'—';
-  settings.appendChild(camVal);
-
-  const lensVal=document.createElement('div');
-  lensVal.style.cssText=`font-family:Arial,sans-serif;font-size:12px;color:#8A7A68;margin-bottom:14px;`;
-  lensVal.textContent=`${photo.lens||'—'}${photo.film_type?' · '+photo.film_type:''}`;
-  settings.appendChild(lensVal);
-
-  const sep1=document.createElement('div');
-  sep1.style.cssText=`height:1px;background:#E8DDD4;margin-bottom:14px;`;
-  settings.appendChild(sep1);
-
-  // EXIF grid
-  const grid=document.createElement('div');
-  grid.style.cssText=`display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;`;
-  [{l:'APERTURE',v:photo.aperture},{l:'SHUTTER',v:photo.shutter_speed},{l:'ISO',v:photo.iso},{l:'FOCAL',v:photo.focal_length},{l:'FLASH',v:photo.flash},{l:'WB',v:photo.white_balance}].forEach(({l,v})=>{
-    const cell=document.createElement('div');
-    cell.style.cssText=`background:#F5F0EB;padding:10px 14px;`;
-    cell.innerHTML=`<div style="font-family:Arial,sans-serif;font-size:8px;color:#8A7A68;letter-spacing:1.5px;margin-bottom:4px;">${l}</div><div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:18px;color:#2A2420;">${v||'—'}</div>`;
-    grid.appendChild(cell);
-  });
+  settings.style.cssText=`padding:16px 20px;flex:1;display:flex;flex-direction:column;`;
+  const camLabel=document.createElement('div');camLabel.style.cssText=`font-family:Arial,sans-serif;font-size:9px;color:#8A7A68;letter-spacing:2px;margin-bottom:4px;`;camLabel.textContent='CAMERA & LENS';settings.appendChild(camLabel);
+  const camVal=document.createElement('div');camVal.style.cssText=`font-family:'Cormorant Garamond',Georgia,serif;font-size:15px;color:#2A2420;margin-bottom:2px;`;camVal.textContent=photo.camera||'—';settings.appendChild(camVal);
+  const lensVal=document.createElement('div');lensVal.style.cssText=`font-family:Arial,sans-serif;font-size:11px;color:#8A7A68;margin-bottom:10px;`;lensVal.textContent=`${photo.lens||'—'}${photo.film_type?' · '+photo.film_type:''}`;settings.appendChild(lensVal);
+  const sep1=document.createElement('div');sep1.style.cssText=`height:1px;background:#E8DDD4;margin-bottom:10px;`;settings.appendChild(sep1);
+  const grid=document.createElement('div');grid.style.cssText=`display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px;`;
+  [{l:'APERTURE',v:photo.aperture},{l:'SHUTTER',v:photo.shutter_speed},{l:'ISO',v:photo.iso},{l:'FOCAL',v:photo.focal_length},{l:'FLASH',v:photo.flash},{l:'WB',v:photo.white_balance}].forEach(({l,v})=>{const cell=document.createElement('div');cell.style.cssText=`background:#F5F0EB;padding:7px 10px;`;cell.innerHTML=`<div style="font-family:Arial,sans-serif;font-size:7px;color:#8A7A68;letter-spacing:1.5px;margin-bottom:3px;">${l}</div><div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:15px;color:#2A2420;">${v||'—'}</div>`;grid.appendChild(cell);});
   settings.appendChild(grid);
-
-  const sep2=document.createElement('div');
-  sep2.style.cssText=`height:1px;background:#E8DDD4;margin-bottom:12px;`;
-  settings.appendChild(sep2);
-
-  // Tags
-  if(photo.tags?.length>0){
-    const tagsEl=document.createElement('div');
-    tagsEl.style.cssText=`font-family:Arial,sans-serif;font-size:11px;color:#8A7A68;line-height:1.8;`;
-    tagsEl.textContent=photo.tags.map(t=>`#${t}`).join('  ');
-    settings.appendChild(tagsEl);
-  }
-
+  const sep2=document.createElement('div');sep2.style.cssText=`height:1px;background:#E8DDD4;margin-bottom:8px;`;settings.appendChild(sep2);
+  if(photo.tags?.length>0){const tagsEl=document.createElement('div');tagsEl.style.cssText=`font-family:Arial,sans-serif;font-size:10px;color:#8A7A68;line-height:1.9;`;tagsEl.textContent=photo.tags.map(t=>`#${t}`).join('  ');settings.appendChild(tagsEl);}
   right.appendChild(settings);
   body.appendChild(right);
   card.appendChild(body);
-
-  // Footer
   const ftr=document.createElement('div');
   ftr.style.cssText=`width:${W}px;height:50px;background:#2A2420;display:flex;align-items:center;justify-content:center;flex-shrink:0;`;
   ftr.innerHTML=`<span style="font-family:Arial,sans-serif;font-size:11px;color:#C8956C;letter-spacing:3px;">SAEIRIS.COM  ·  @SAE1RIS  ·  PHOTOGLOBE</span>`;
   card.appendChild(ftr);
-
   return card;
 }
 
-function lon2tile(lon,zoom){return Math.floor((lon+180)/360*Math.pow(2,zoom));}
-function lat2tile(lat,zoom){return Math.floor((1-Math.log(Math.tan(lat*Math.PI/180)+1/Math.cos(lat*Math.PI/180))/Math.PI)/2*Math.pow(2,zoom));}
-
 // ── Photo Detail ──
-function PhotoDetail({photo, onClose, onLike, onDelete, user}){
+function PhotoDetail({photo, onClose, onLike, onDelete, user, getGlobeSnapshot}){
   const[fullscreen,setFullscreen]=useState(false);
   const[confirmDelete,setConfirmDelete]=useState(false);
   const[exporting,setExporting]=useState(false);
@@ -330,17 +249,21 @@ function PhotoDetail({photo, onClose, onLike, onDelete, user}){
   const handleExport=async()=>{
     setExporting(true);
     try{
-      const html2canvas=(await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.esm.js')).default;
-      const card=buildExportCard(photo);
+      const g=globeRef?.current;
+      if(g){g.pointOfView({lat:photo.lat,lng:photo.lon,altitude:1.4},0);}
+      await new Promise(r=>setTimeout(r,600));
+      const globeDataUrl=getGlobeSnapshot?getGlobeSnapshot():null;
+      const {default:html2canvas}=await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.esm.js');
+      const card=buildExportCard(photo,globeDataUrl);
       document.body.appendChild(card);
-      await new Promise(r=>setTimeout(r,800));
-      const canvas=await html2canvas(card,{width:1080,height:1350,scale:1,useCORS:true,allowTaint:false,backgroundColor:'#FDFBF8'});
+      await new Promise(r=>setTimeout(r,500));
+      const canvas=await html2canvas(card,{width:1080,height:1350,scale:1,useCORS:true,allowTaint:false,backgroundColor:'#FDFBF8',logging:false});
       document.body.removeChild(card);
       const link=document.createElement('a');
       link.download=`saeiris-${(photo.title||'photo').toLowerCase().replace(/\s+/g,'-')}.png`;
       link.href=canvas.toDataURL('image/png');
       link.click();
-    }catch(e){console.error(e);}
+    }catch(e){console.error('Export failed:',e);}
     setExporting(false);
   };
 
@@ -949,6 +872,7 @@ function MobilePhotoGlobe({onNavigate, photos, filtered, stats, selectedId, setS
 // ══════════════════════════════════════════════════════════════
 export default function PhotoGlobe({onNavigate}){
   const isMobile = window.innerWidth < 768;
+  const globeOuterRef = useRef(null);
 
   const[photos,setPhotos]=useState([]);
   const[selectedId,setSelectedId]=useState(null);
@@ -1126,8 +1050,18 @@ export default function PhotoGlobe({onNavigate}){
           <div style={{color:"rgba(200,149,108,0.2)"}}>·</div>
           <div>Drag · Scroll to zoom</div>
         </div>
-        <GlobeCanvas photos={filtered} selectedId={selectedId} onSelect={id=>setSelectedId(selectedId===id?null:id)}/>
-        {sel&&<PhotoDetail photo={sel} onClose={()=>setSelectedId(null)} onLike={handleLike} onDelete={handleDelete} user={user}/>}
+        <GlobeCanvas photos={filtered} selectedId={selectedId} onSelect={id=>setSelectedId(selectedId===id?null:id)} outerRef={globeOuterRef}/>
+        {sel&&<PhotoDetail photo={sel} onClose={()=>setSelectedId(null)} onLike={handleLike} onDelete={handleDelete} user={user} getGlobeSnapshot={()=>{
+          try{
+            const g=globeOuterRef.current?.current;
+            if(!g) return null;
+            g.pointOfView({lat:sel.lat,lng:sel.lon,altitude:1.5},0);
+            const renderer=g.renderer();
+            if(!renderer) return null;
+            renderer.render(g.scene(),g.camera());
+            return renderer.domElement.toDataURL('image/png');
+          }catch(e){return null;}
+        }}/>}
       </div>
 
       {showUpload&&user&&<UploadModal onClose={()=>setShowUpload(false)} onUpload={loadPhotos} user={user}/>}

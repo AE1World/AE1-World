@@ -173,11 +173,176 @@ function PhotoListItem({photo, selected, onClick}){
   );
 }
 
+// ── Instagram Export Card ──
+function buildExportCard(photo){
+  const W=1080, H=1350;
+  const mapW=480, mapH=H;
+  const rightW=W-mapW;
+
+  const card=document.createElement('div');
+  card.style.cssText=`position:fixed;left:-9999px;top:0;width:${W}px;height:${H}px;display:flex;flex-direction:column;font-family:'Cormorant Garamond',Georgia,serif;background:#FDFBF8;overflow:hidden;`;
+
+  // Header bar
+  const hdr=document.createElement('div');
+  hdr.style.cssText=`width:${W}px;height:60px;background:#2A2420;display:flex;align-items:center;justify-content:center;flex-shrink:0;`;
+  hdr.innerHTML=`<span style="font-family:'Cormorant Garamond',Georgia,serif;font-size:16px;color:#C8956C;letter-spacing:8px;">S Æ-1 R I S</span>`;
+  card.appendChild(hdr);
+
+  // Body row
+  const body=document.createElement('div');
+  body.style.cssText=`display:flex;flex:1;overflow:hidden;`;
+
+  // Left — map via OpenStreetMap static tile centered on photo lat/lon
+  const mapCol=document.createElement('div');
+  mapCol.style.cssText=`width:${mapW}px;height:${H-60-50}px;position:relative;background:#1a3a5c;flex-shrink:0;overflow:hidden;`;
+
+  const zoom=7;
+  const lat=photo.lat||0, lon=photo.lon||0;
+  const tileUrl=`https://tile.openstreetmap.org/${zoom}/${lon2tile(lon,zoom)}/${lat2tile(lat,zoom)}.png`;
+  const mapImg=document.createElement('img');
+  mapImg.crossOrigin='anonymous';
+  mapImg.style.cssText=`width:100%;height:100%;object-fit:cover;`;
+  mapImg.src=tileUrl;
+  mapCol.appendChild(mapImg);
+
+  // Aperture pin overlay centered
+  const pinSvg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  pinSvg.setAttribute('width','60');pinSvg.setAttribute('height','60');
+  pinSvg.setAttribute('viewBox','0 0 60 60');
+  pinSvg.style.cssText=`position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);`;
+  pinSvg.innerHTML=`
+    <circle cx="30" cy="30" r="28" fill="none" stroke="#C8956C" stroke-width="1.5" opacity="0.3"/>
+    <circle cx="30" cy="30" r="18" fill="none" stroke="#C8956C" stroke-width="2"/>
+    <circle cx="30" cy="30" r="5" fill="#C8956C"/>
+    ${[0,45,90,135].map(a=>{
+      const r=Math.PI*a/180;
+      const x1=(30+Math.cos(r)*19).toFixed(1), y1=(30+Math.sin(r)*19).toFixed(1);
+      const x2=(30+Math.cos(r)*27).toFixed(1), y2=(30+Math.sin(r)*27).toFixed(1);
+      const x3=(30-Math.cos(r)*19).toFixed(1), y3=(30-Math.sin(r)*19).toFixed(1);
+      const x4=(30-Math.cos(r)*27).toFixed(1), y4=(30-Math.sin(r)*27).toFixed(1);
+      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#C8956C" stroke-width="1.2" opacity="0.6"/>
+              <line x1="${x3}" y1="${y3}" x2="${x4}" y2="${y4}" stroke="#C8956C" stroke-width="1.2" opacity="0.6"/>`;
+    }).join('')}`;
+  mapCol.appendChild(pinSvg);
+
+  // Location label
+  const locLabel=document.createElement('div');
+  locLabel.style.cssText=`position:absolute;bottom:24px;left:20px;background:rgba(26,20,16,0.8);padding:10px 16px;`;
+  locLabel.innerHTML=`<div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:18px;color:#FDFBF8;">${photo.city||''}, ${photo.country||''}</div><div style="font-family:Arial,sans-serif;font-size:12px;color:#C8956C;letter-spacing:1px;margin-top:4px;">${(lat).toFixed(2)}° N · ${Math.abs(lon).toFixed(2)}° ${lon<0?'W':'E'}</div>`;
+  mapCol.appendChild(locLabel);
+  body.appendChild(mapCol);
+
+  // Vertical divider
+  const div=document.createElement('div');
+  div.style.cssText=`width:2px;background:#C8956C;opacity:0.25;flex-shrink:0;`;
+  body.appendChild(div);
+
+  // Right column
+  const right=document.createElement('div');
+  right.style.cssText=`width:${rightW-2}px;display:flex;flex-direction:column;background:#FDFBF8;overflow:hidden;`;
+
+  // Photo snippet
+  const photoSnip=document.createElement('div');
+  photoSnip.style.cssText=`width:100%;height:360px;position:relative;background:#2A2420;flex-shrink:0;overflow:hidden;`;
+  if(photo.image_url){
+    const img=document.createElement('img');
+    img.crossOrigin='anonymous';
+    img.style.cssText=`width:100%;height:100%;object-fit:cover;`;
+    img.src=photo.image_url;
+    photoSnip.appendChild(img);
+  }
+  const overlay=document.createElement('div');
+  overlay.style.cssText=`position:absolute;bottom:0;left:0;right:0;padding:20px 24px;background:linear-gradient(to top,rgba(26,20,16,0.85) 0%,transparent 100%);`;
+  overlay.innerHTML=`<div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:20px;color:#FDFBF8;margin-bottom:4px;">${photo.title||''}</div><div style="font-family:Arial,sans-serif;font-size:11px;color:#C8956C;letter-spacing:1.5px;">${(photo.city||'').toUpperCase()}${photo.country?', '+(photo.country).toUpperCase():''}</div>`;
+  photoSnip.appendChild(overlay);
+  right.appendChild(photoSnip);
+
+  // Settings area
+  const settings=document.createElement('div');
+  settings.style.cssText=`padding:20px 24px;flex:1;display:flex;flex-direction:column;gap:0;`;
+
+  // Camera label
+  const camLabel=document.createElement('div');
+  camLabel.style.cssText=`font-family:Arial,sans-serif;font-size:10px;color:#8A7A68;letter-spacing:2px;margin-bottom:6px;`;
+  camLabel.textContent='CAMERA & LENS';
+  settings.appendChild(camLabel);
+
+  const camVal=document.createElement('div');
+  camVal.style.cssText=`font-family:'Cormorant Garamond',Georgia,serif;font-size:17px;color:#2A2420;margin-bottom:3px;`;
+  camVal.textContent=photo.camera||'—';
+  settings.appendChild(camVal);
+
+  const lensVal=document.createElement('div');
+  lensVal.style.cssText=`font-family:Arial,sans-serif;font-size:12px;color:#8A7A68;margin-bottom:14px;`;
+  lensVal.textContent=`${photo.lens||'—'}${photo.film_type?' · '+photo.film_type:''}`;
+  settings.appendChild(lensVal);
+
+  const sep1=document.createElement('div');
+  sep1.style.cssText=`height:1px;background:#E8DDD4;margin-bottom:14px;`;
+  settings.appendChild(sep1);
+
+  // EXIF grid
+  const grid=document.createElement('div');
+  grid.style.cssText=`display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;`;
+  [{l:'APERTURE',v:photo.aperture},{l:'SHUTTER',v:photo.shutter_speed},{l:'ISO',v:photo.iso},{l:'FOCAL',v:photo.focal_length},{l:'FLASH',v:photo.flash},{l:'WB',v:photo.white_balance}].forEach(({l,v})=>{
+    const cell=document.createElement('div');
+    cell.style.cssText=`background:#F5F0EB;padding:10px 14px;`;
+    cell.innerHTML=`<div style="font-family:Arial,sans-serif;font-size:8px;color:#8A7A68;letter-spacing:1.5px;margin-bottom:4px;">${l}</div><div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:18px;color:#2A2420;">${v||'—'}</div>`;
+    grid.appendChild(cell);
+  });
+  settings.appendChild(grid);
+
+  const sep2=document.createElement('div');
+  sep2.style.cssText=`height:1px;background:#E8DDD4;margin-bottom:12px;`;
+  settings.appendChild(sep2);
+
+  // Tags
+  if(photo.tags?.length>0){
+    const tagsEl=document.createElement('div');
+    tagsEl.style.cssText=`font-family:Arial,sans-serif;font-size:11px;color:#8A7A68;line-height:1.8;`;
+    tagsEl.textContent=photo.tags.map(t=>`#${t}`).join('  ');
+    settings.appendChild(tagsEl);
+  }
+
+  right.appendChild(settings);
+  body.appendChild(right);
+  card.appendChild(body);
+
+  // Footer
+  const ftr=document.createElement('div');
+  ftr.style.cssText=`width:${W}px;height:50px;background:#2A2420;display:flex;align-items:center;justify-content:center;flex-shrink:0;`;
+  ftr.innerHTML=`<span style="font-family:Arial,sans-serif;font-size:11px;color:#C8956C;letter-spacing:3px;">SAEIRIS.COM  ·  @SAE1RIS  ·  PHOTOGLOBE</span>`;
+  card.appendChild(ftr);
+
+  return card;
+}
+
+function lon2tile(lon,zoom){return Math.floor((lon+180)/360*Math.pow(2,zoom));}
+function lat2tile(lat,zoom){return Math.floor((1-Math.log(Math.tan(lat*Math.PI/180)+1/Math.cos(lat*Math.PI/180))/Math.PI)/2*Math.pow(2,zoom));}
+
 // ── Photo Detail ──
 function PhotoDetail({photo, onClose, onLike, onDelete, user}){
   const[fullscreen,setFullscreen]=useState(false);
   const[confirmDelete,setConfirmDelete]=useState(false);
+  const[exporting,setExporting]=useState(false);
   const isOwner = user && photo.user_id === user.id;
+
+  const handleExport=async()=>{
+    setExporting(true);
+    try{
+      const html2canvas=(await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.esm.js')).default;
+      const card=buildExportCard(photo);
+      document.body.appendChild(card);
+      await new Promise(r=>setTimeout(r,800));
+      const canvas=await html2canvas(card,{width:1080,height:1350,scale:1,useCORS:true,allowTaint:false,backgroundColor:'#FDFBF8'});
+      document.body.removeChild(card);
+      const link=document.createElement('a');
+      link.download=`saeiris-${(photo.title||'photo').toLowerCase().replace(/\s+/g,'-')}.png`;
+      link.href=canvas.toDataURL('image/png');
+      link.click();
+    }catch(e){console.error(e);}
+    setExporting(false);
+  };
 
   if(!photo)return null;
   if(fullscreen&&photo.image_url){
@@ -205,6 +370,13 @@ function PhotoDetail({photo, onClose, onLike, onDelete, user}){
         <button onClick={()=>onLike(photo.id)}
           style={{width:"100%",padding:"10px",border:`1px solid ${photo.user_liked?"rgba(200,149,108,0.4)":C.border}`,background:photo.user_liked?"rgba(200,149,108,0.08)":"transparent",color:photo.user_liked?C.accent:C.muted,fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginBottom:16,transition:"all 0.2s",fontFamily:C.fontSans,letterSpacing:"0.06em"}}>
           {photo.user_liked?"♥":"♡"} {photo.like_count||0} {photo.like_count===1?"like":"likes"}
+        </button>
+        <button onClick={handleExport} disabled={exporting}
+          style={{width:"100%",padding:"10px",border:`1px solid ${C.border}`,background:"transparent",color:exporting?C.muted:C.dark,fontSize:12,fontWeight:600,cursor:exporting?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginBottom:16,transition:"all 0.2s",fontFamily:C.fontSans,letterSpacing:"0.08em",textTransform:"uppercase",opacity:exporting?0.6:1}}
+          onMouseOver={e=>!exporting&&(e.currentTarget.style.background=C.faint)}
+          onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          {exporting?"Exporting...":"Export for Instagram"}
         </button>
         {isOwner&&(
           confirmDelete?(

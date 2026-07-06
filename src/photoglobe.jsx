@@ -71,7 +71,97 @@ function AuthModal({onClose,onAuth}){
   );
 }
 
-// ── Globe Canvas ──
+// ── Crop Overlay ──
+function CropOverlay({onCapture, onCancel, globeOuterRef}){
+  const overlayRef=useRef();
+  const startRef=useRef(null);
+  const [rect,setRect]=useState(null);
+  const [dragging,setDragging]=useState(false);
+
+  const getPos=(e)=>{
+    const b=overlayRef.current.getBoundingClientRect();
+    const clientX=e.touches?e.touches[0].clientX:e.clientX;
+    const clientY=e.touches?e.touches[0].clientY:e.clientY;
+    return{x:clientX-b.left, y:clientY-b.top};
+  };
+
+  const onDown=(e)=>{
+    e.preventDefault();
+    const p=getPos(e);
+    startRef.current=p;
+    setRect({x:p.x,y:p.y,w:0,h:0});
+    setDragging(true);
+  };
+
+  const onMove=(e)=>{
+    if(!dragging||!startRef.current) return;
+    e.preventDefault();
+    const p=getPos(e);
+    const s=startRef.current;
+    setRect({
+      x:Math.min(s.x,p.x),
+      y:Math.min(s.y,p.y),
+      w:Math.abs(p.x-s.x),
+      h:Math.abs(p.y-s.y),
+    });
+  };
+
+  const onUp=async(e)=>{
+    if(!dragging) return;
+    setDragging(false);
+    if(!rect||rect.w<20||rect.h<20){setRect(null);return;}
+    // Capture the selected region from the WebGL canvas
+    try{
+      const {globeRef:gRef}=globeOuterRef.current||{};
+      const g=gRef?.current;
+      const glCanvas=g?.renderer()?.domElement || document.querySelector('#globe-container canvas');
+      if(!glCanvas){onCancel();return;}
+      // Force a fresh render
+      if(g) g.renderer().render(g.scene(),g.camera());
+      // Scale factor between CSS px and canvas pixels
+      const scaleX=glCanvas.width/glCanvas.offsetWidth;
+      const scaleY=glCanvas.height/glCanvas.offsetHeight;
+      const out=document.createElement('canvas');
+      out.width=Math.round(rect.w*scaleX);
+      out.height=Math.round(rect.h*scaleY);
+      const ctx=out.getContext('2d');
+      ctx.drawImage(
+        glCanvas,
+        Math.round(rect.x*scaleX), Math.round(rect.y*scaleY),
+        Math.round(rect.w*scaleX), Math.round(rect.h*scaleY),
+        0,0,out.width,out.height
+      );
+      const dataUrl=out.toDataURL('image/png');
+      onCapture(dataUrl);
+    }catch(err){console.error('Crop capture failed:',err);onCancel();}
+  };
+
+  return(
+    <div ref={overlayRef}
+      onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
+      onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}
+      style={{position:"absolute",inset:0,zIndex:200,cursor:"crosshair",userSelect:"none",touchAction:"none"}}>
+      {/* Dark overlay with cutout */}
+      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.55)"}}/>
+      {/* Instruction */}
+      <div style={{position:"absolute",top:24,left:"50%",transform:"translateX(-50%)",background:"rgba(26,20,16,0.9)",padding:"10px 20px",color:"#FDFBF8",fontSize:13,fontFamily:"Arial,sans-serif",letterSpacing:"0.05em",whiteSpace:"nowrap",zIndex:2,border:"1px solid rgba(200,149,108,0.4)"}}>
+        Drag to select the map area for your Instagram card
+      </div>
+      {/* Cancel button */}
+      <button onClick={onCancel} style={{position:"absolute",top:24,right:24,background:"rgba(26,20,16,0.9)",border:"1px solid rgba(200,149,108,0.3)",color:"rgba(245,240,235,0.7)",padding:"8px 16px",fontSize:12,cursor:"pointer",fontFamily:"Arial,sans-serif",letterSpacing:"0.08em",zIndex:3}}>
+        Cancel
+      </button>
+      {/* Selection rectangle */}
+      {rect&&rect.w>2&&rect.h>2&&(
+        <div style={{position:"absolute",left:rect.x,top:rect.y,width:rect.w,height:rect.h,border:"2px solid #C8956C",boxShadow:"0 0 0 9999px rgba(0,0,0,0.45)",zIndex:2,pointerEvents:"none"}}>
+          <div style={{position:"absolute",top:4,left:4,background:"rgba(200,149,108,0.85)",padding:"3px 8px",fontSize:10,color:"#fff",fontFamily:"Arial,sans-serif",letterSpacing:"0.05em"}}>
+            {Math.round(rect.w)} × {Math.round(rect.h)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 function GlobeCanvas({photos, selectedId, onSelect, width, height, outerRef}){
   const globeRef = useRef();
   const containerRef = useRef();
@@ -82,7 +172,18 @@ function GlobeCanvas({photos, selectedId, onSelect, width, height, outerRef}){
   const [dims, setDims] = useState({w: width || window.innerWidth, h: height || window.innerHeight});
 
   useEffect(()=>{
-    import('react-globe.gl').then(mod=>{setGlobeComponent(()=>mod.default);});
+    // Patch getContext BEFORE globe initializes so Three.js WebGL context has preserveDrawingBuffer
+    const origGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function(type, attrs){
+      if(type==='webgl'||type==='webgl2'){
+        attrs = {...(attrs||{}), preserveDrawingBuffer:true};
+      }
+      return origGetContext.call(this, type, attrs);
+    };
+    import('react-globe.gl').then(mod=>{
+      HTMLCanvasElement.prototype.getContext = origGetContext; // restore immediately after
+      setGlobeComponent(()=>mod.default);
+    });
   },[]);
 
   useEffect(()=>{
@@ -101,8 +202,6 @@ function GlobeCanvas({photos, selectedId, onSelect, width, height, outerRef}){
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     globeRef.current.pointOfView({lat:20, lng:-20, altitude:2.2});
-    const renderer = globeRef.current.renderer();
-    if(renderer) renderer.preserveDrawingBuffer = true;
     import('three').then(THREE=>{
       const mat = globeRef.current.globeMaterial();
       mat.bumpScale = 12;
@@ -133,7 +232,7 @@ function GlobeCanvas({photos, selectedId, onSelect, width, height, outerRef}){
   );
 
   return(
-    <div ref={containerRef} style={{width:'100%',height:'100%'}}>
+    <div ref={containerRef} id="globe-container" style={{width:'100%',height:'100%'}}>
       <GlobeComponent
         ref={globeRef}
         width={dims.w}
@@ -872,6 +971,8 @@ function MobilePhotoGlobe({onNavigate, photos, filtered, stats, selectedId, setS
 export default function PhotoGlobe({onNavigate}){
   const isMobile = window.innerWidth < 768;
   const globeOuterRef = useRef(null);
+  const[cropMode,setCropMode]=useState(false);
+  const[cropResolve,setCropResolve]=useState(null);
 
   const[photos,setPhotos]=useState([]);
   const[selectedId,setSelectedId]=useState(null);
@@ -1050,29 +1151,22 @@ export default function PhotoGlobe({onNavigate}){
           <div>Drag · Scroll to zoom</div>
         </div>
         <GlobeCanvas photos={filtered} selectedId={selectedId} onSelect={id=>setSelectedId(selectedId===id?null:id)} outerRef={globeOuterRef}/>
-        {sel&&<PhotoDetail photo={sel} onClose={()=>setSelectedId(null)} onLike={handleLike} onDelete={handleDelete} user={user} getGlobeSnapshot={async()=>{
-          try{
-            const {globeRef:gRef, containerRef:cRef}=globeOuterRef.current||{};
-            const g=gRef?.current;
-            const container=cRef?.current;
-            if(!g||!container) return null;
-            g.controls().autoRotate=false;
-            g.pointOfView({lat:sel.lat,lng:sel.lon,altitude:1.1},1000);
-            await new Promise(r=>setTimeout(r,1300));
-            const {default:html2canvas}=await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.esm.js');
-            const canvas=await html2canvas(container,{
-              useCORS:true,
-              allowTaint:true,
-              backgroundColor:'#1C2535',
-              scale:1,
-              logging:false,
-              foreignObjectRendering:false,
-            });
-            const dataUrl=canvas.toDataURL('image/png');
-            g.controls().autoRotate=true;
-            g.pointOfView({lat:20,lng:-20,altitude:2.2},800);
-            return dataUrl;
-          }catch(e){console.error('Snapshot error:',e);return null;}
+        {cropMode&&<CropOverlay
+          globeOuterRef={globeOuterRef}
+          onCapture={(dataUrl)=>{
+            setCropMode(false);
+            if(cropResolve){cropResolve(dataUrl);setCropResolve(null);}
+          }}
+          onCancel={()=>{
+            setCropMode(false);
+            if(cropResolve){cropResolve(null);setCropResolve(null);}
+          }}
+        />}
+        {sel&&<PhotoDetail photo={sel} onClose={()=>setSelectedId(null)} onLike={handleLike} onDelete={handleDelete} user={user} getGlobeSnapshot={()=>{
+          return new Promise((resolve)=>{
+            setCropResolve(()=>resolve);
+            setCropMode(true);
+          });
         }}/>}
       </div>
 

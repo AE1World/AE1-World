@@ -101,6 +101,8 @@ function GlobeCanvas({photos, selectedId, onSelect, width, height, outerRef}){
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     globeRef.current.pointOfView({lat:20, lng:-20, altitude:2.2});
+    const renderer = globeRef.current.renderer();
+    if(renderer) renderer.preserveDrawingBuffer = true;
     import('three').then(THREE=>{
       const mat = globeRef.current.globeMaterial();
       mat.bumpScale = 12;
@@ -249,14 +251,11 @@ function PhotoDetail({photo, onClose, onLike, onDelete, user, getGlobeSnapshot})
   const handleExport=async()=>{
     setExporting(true);
     try{
-      const g=globeRef?.current;
-      if(g){g.pointOfView({lat:photo.lat,lng:photo.lon,altitude:1.4},0);}
-      await new Promise(r=>setTimeout(r,600));
-      const globeDataUrl=getGlobeSnapshot?getGlobeSnapshot():null;
+      const globeDataUrl=getGlobeSnapshot ? await getGlobeSnapshot() : null;
       const {default:html2canvas}=await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.esm.js');
       const card=buildExportCard(photo,globeDataUrl);
       document.body.appendChild(card);
-      await new Promise(r=>setTimeout(r,500));
+      await new Promise(r=>setTimeout(r,600));
       const canvas=await html2canvas(card,{width:1080,height:1350,scale:1,useCORS:true,allowTaint:false,backgroundColor:'#FDFBF8',logging:false});
       document.body.removeChild(card);
       const link=document.createElement('a');
@@ -1051,16 +1050,20 @@ export default function PhotoGlobe({onNavigate}){
           <div>Drag · Scroll to zoom</div>
         </div>
         <GlobeCanvas photos={filtered} selectedId={selectedId} onSelect={id=>setSelectedId(selectedId===id?null:id)} outerRef={globeOuterRef}/>
-        {sel&&<PhotoDetail photo={sel} onClose={()=>setSelectedId(null)} onLike={handleLike} onDelete={handleDelete} user={user} getGlobeSnapshot={()=>{
+        {sel&&<PhotoDetail photo={sel} onClose={()=>setSelectedId(null)} onLike={handleLike} onDelete={handleDelete} user={user} getGlobeSnapshot={async()=>{
           try{
             const g=globeOuterRef.current?.current;
             if(!g) return null;
-            g.pointOfView({lat:sel.lat,lng:sel.lon,altitude:1.5},0);
+            g.controls().autoRotate=false;
+            g.pointOfView({lat:sel.lat,lng:sel.lon,altitude:1.2},1200);
+            await new Promise(r=>setTimeout(r,1400));
             const renderer=g.renderer();
             if(!renderer) return null;
-            renderer.render(g.scene(),g.camera());
-            return renderer.domElement.toDataURL('image/png');
-          }catch(e){return null;}
+            const dataUrl=renderer.domElement.toDataURL('image/png');
+            g.controls().autoRotate=true;
+            g.pointOfView({lat:20,lng:-20,altitude:2.2},1000);
+            return dataUrl;
+          }catch(e){console.error('Snapshot error:',e);return null;}
         }}/>}
       </div>
 

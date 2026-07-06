@@ -312,7 +312,13 @@ function buildExportCard(photo,globeDataUrl){
   // Photo snippet — fixed preview box, crops naturally like detail panel thumbnail
   const photoSnip=document.createElement('div');
   photoSnip.style.cssText=`width:100%;height:280px;position:relative;background:#2A2420;flex-shrink:0;overflow:hidden;`;
-  if(photo.image_url){const img=document.createElement('img');img.crossOrigin='anonymous';img.style.cssText=`width:100%;height:100%;object-fit:cover;object-position:center;display:block;`;img.src=photo.image_url;photoSnip.appendChild(img);}
+  if(photo.image_url){
+    const img=document.createElement('img');
+    img.crossOrigin='anonymous';
+    img.style.cssText=`position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;object-position:center;display:block;`;
+    img.src=photo.image_url;
+    photoSnip.appendChild(img);
+  }
   const photoOverlay=document.createElement('div');
   photoOverlay.style.cssText=`position:absolute;bottom:0;left:0;right:0;padding:16px 20px;background:linear-gradient(to top,rgba(26,20,16,0.88) 0%,transparent 100%);`;
   photoOverlay.innerHTML=`<div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:18px;color:#FDFBF8;margin-bottom:3px;line-height:1.2;">${photo.title||''}</div><div style="font-family:Arial,sans-serif;font-size:10px;color:#C8956C;letter-spacing:1.5px;">${(photo.city||'').toUpperCase()}${photo.country?', '+(photo.country).toUpperCase():''}</div>`;
@@ -354,7 +360,13 @@ function PhotoDetail({photo, onClose, onLike, onDelete, user, getGlobeSnapshot})
       const {default:html2canvas}=await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.esm.js');
       const card=buildExportCard(photo,globeDataUrl);
       document.body.appendChild(card);
-      await new Promise(r=>setTimeout(r,600));
+      // Wait for all images in the card to fully load before capturing
+      const images=Array.from(card.querySelectorAll('img'));
+      await Promise.all(images.map(img=>new Promise(resolve=>{
+        if(img.complete&&img.naturalHeight!==0) resolve();
+        else{ img.onload=resolve; img.onerror=resolve; }
+      })));
+      await new Promise(r=>setTimeout(r,200));
       const canvas=await html2canvas(card,{width:1080,height:1350,scale:1,useCORS:true,allowTaint:false,backgroundColor:'#FDFBF8',logging:false});
       document.body.removeChild(card);
       const link=document.createElement('a');

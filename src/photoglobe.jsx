@@ -74,88 +74,114 @@ function AuthModal({onClose,onAuth}){
 // ── Crop Overlay ──
 function CropOverlay({onCapture, onCancel, globeOuterRef}){
   const overlayRef=useRef();
-  const startRef=useRef(null);
-  const [rect,setRect]=useState(null);
-  const [dragging,setDragging]=useState(false);
+  // Fixed frame: matches left column proportions of 4:5 card (480 x 1240 at 1080px wide)
+  // Display at ~45% scale so it fits on screen
+  const FRAME_W=420, FRAME_H=960;
+  const [pos,setPos]=useState(null); // initialized on mount
+  const dragging=useRef(false);
+  const dragStart=useRef(null);
+  const posRef=useRef({x:0,y:0});
 
-  const getPos=(e)=>{
-    const b=overlayRef.current.getBoundingClientRect();
-    const clientX=e.touches?e.touches[0].clientX:e.clientX;
-    const clientY=e.touches?e.touches[0].clientY:e.clientY;
-    return{x:clientX-b.left, y:clientY-b.top};
-  };
+  useEffect(()=>{
+    // Center the frame on mount
+    if(overlayRef.current){
+      const b=overlayRef.current.getBoundingClientRect();
+      const x=Math.max(0,(b.width-FRAME_W)/2);
+      const y=Math.max(0,(b.height-FRAME_H)/2);
+      setPos({x,y});
+      posRef.current={x,y};
+    }
+  },[]);
 
   const onDown=(e)=>{
     e.preventDefault();
-    const p=getPos(e);
-    startRef.current=p;
-    setRect({x:p.x,y:p.y,w:0,h:0});
-    setDragging(true);
+    e.stopPropagation();
+    dragging.current=true;
+    const clientX=e.touches?e.touches[0].clientX:e.clientX;
+    const clientY=e.touches?e.touches[0].clientY:e.clientY;
+    dragStart.current={mx:clientX,my:clientY,px:posRef.current.x,py:posRef.current.y};
   };
 
   const onMove=(e)=>{
-    if(!dragging||!startRef.current) return;
+    if(!dragging.current||!dragStart.current) return;
     e.preventDefault();
-    const p=getPos(e);
-    const s=startRef.current;
-    setRect({
-      x:Math.min(s.x,p.x),
-      y:Math.min(s.y,p.y),
-      w:Math.abs(p.x-s.x),
-      h:Math.abs(p.y-s.y),
-    });
+    const clientX=e.touches?e.touches[0].clientX:e.clientX;
+    const clientY=e.touches?e.touches[0].clientY:e.clientY;
+    const dx=clientX-dragStart.current.mx;
+    const dy=clientY-dragStart.current.my;
+    const b=overlayRef.current.getBoundingClientRect();
+    const nx=Math.max(0,Math.min(b.width-FRAME_W,dragStart.current.px+dx));
+    const ny=Math.max(0,Math.min(b.height-FRAME_H,dragStart.current.py+dy));
+    posRef.current={x:nx,y:ny};
+    setPos({x:nx,y:ny});
   };
 
-  const onUp=async(e)=>{
-    if(!dragging) return;
-    setDragging(false);
-    if(!rect||rect.w<20||rect.h<20){setRect(null);return;}
-    // Capture the selected region from the WebGL canvas
+  const onUp=(e)=>{
+    dragging.current=false;
+  };
+
+  const handleCapture=async()=>{
+    if(!pos) return;
     try{
       const {globeRef:gRef}=globeOuterRef.current||{};
       const g=gRef?.current;
-      const glCanvas=g?.renderer()?.domElement || document.querySelector('#globe-container canvas');
+      const glCanvas=g?.renderer()?.domElement||document.querySelector('#globe-container canvas');
       if(!glCanvas){onCancel();return;}
-      // Force a fresh render
       if(g) g.renderer().render(g.scene(),g.camera());
-      // Scale factor between CSS px and canvas pixels
+      // Scale from CSS px to actual canvas pixels
       const scaleX=glCanvas.width/glCanvas.offsetWidth;
       const scaleY=glCanvas.height/glCanvas.offsetHeight;
+      // The overlay sits over the globe area — get globe canvas position relative to overlay
+      const overlayRect=overlayRef.current.getBoundingClientRect();
+      const canvasRect=glCanvas.getBoundingClientRect();
+      const offsetX=canvasRect.left-overlayRect.left;
+      const offsetY=canvasRect.top-overlayRect.top;
+      // Frame position relative to the canvas
+      const srcX=Math.round((pos.x-offsetX)*scaleX);
+      const srcY=Math.round((pos.y-offsetY)*scaleY);
+      const srcW=Math.round(FRAME_W*scaleX);
+      const srcH=Math.round(FRAME_H*scaleY);
+      // Output canvas at exact card left-column dimensions (480x1240)
       const out=document.createElement('canvas');
-      out.width=Math.round(rect.w*scaleX);
-      out.height=Math.round(rect.h*scaleY);
+      out.width=480; out.height=1240;
       const ctx=out.getContext('2d');
-      ctx.drawImage(
-        glCanvas,
-        Math.round(rect.x*scaleX), Math.round(rect.y*scaleY),
-        Math.round(rect.w*scaleX), Math.round(rect.h*scaleY),
-        0,0,out.width,out.height
-      );
-      const dataUrl=out.toDataURL('image/png');
-      onCapture(dataUrl);
-    }catch(err){console.error('Crop capture failed:',err);onCancel();}
+      ctx.drawImage(glCanvas,srcX,srcY,srcW,srcH,0,0,480,1240);
+      onCapture(out.toDataURL('image/png'));
+    }catch(err){console.error('Capture failed:',err);onCancel();}
   };
 
   return(
     <div ref={overlayRef}
-      onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
-      onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}
-      style={{position:"absolute",inset:0,zIndex:200,cursor:"crosshair",userSelect:"none",touchAction:"none"}}>
-      {/* Dark overlay with cutout */}
-      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.55)"}}/>
-      {/* Instruction */}
-      <div style={{position:"absolute",top:24,left:"50%",transform:"translateX(-50%)",background:"rgba(26,20,16,0.9)",padding:"10px 20px",color:"#FDFBF8",fontSize:13,fontFamily:"Arial,sans-serif",letterSpacing:"0.05em",whiteSpace:"nowrap",zIndex:2,border:"1px solid rgba(200,149,108,0.4)"}}>
-        Drag to select the map area for your Instagram card
+      onMouseMove={onMove} onMouseUp={onUp} onTouchMove={onMove} onTouchEnd={onUp}
+      style={{position:"absolute",inset:0,zIndex:200,userSelect:"none",touchAction:"none"}}>
+      {/* Dark background */}
+      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.55)",pointerEvents:"none"}}/>
+      {/* Instruction bar */}
+      <div style={{position:"absolute",top:20,left:"50%",transform:"translateX(-50%)",background:"rgba(26,20,16,0.92)",padding:"10px 22px",color:"#FDFBF8",fontSize:13,fontFamily:"Arial,sans-serif",letterSpacing:"0.05em",whiteSpace:"nowrap",zIndex:4,border:"1px solid rgba(200,149,108,0.4)",pointerEvents:"none"}}>
+        Drag the frame to position it, then click Capture
       </div>
-      {/* Cancel button */}
-      <button onClick={onCancel} style={{position:"absolute",top:24,right:24,background:"rgba(26,20,16,0.9)",border:"1px solid rgba(200,149,108,0.3)",color:"rgba(245,240,235,0.7)",padding:"8px 16px",fontSize:12,cursor:"pointer",fontFamily:"Arial,sans-serif",letterSpacing:"0.08em",zIndex:3}}>
+      {/* Cancel */}
+      <button onMouseDown={e=>e.stopPropagation()} onClick={onCancel}
+        style={{position:"absolute",top:20,right:20,background:"rgba(26,20,16,0.9)",border:"1px solid rgba(200,149,108,0.3)",color:"rgba(245,240,235,0.7)",padding:"8px 16px",fontSize:12,cursor:"pointer",fontFamily:"Arial,sans-serif",letterSpacing:"0.08em",zIndex:5}}>
         Cancel
       </button>
-      {/* Selection rectangle */}
-      {rect&&rect.w>2&&rect.h>2&&(
-        <div style={{position:"absolute",left:rect.x,top:rect.y,width:rect.w,height:rect.h,border:"2px solid #C8956C",boxShadow:"0 0 0 9999px rgba(0,0,0,0.45)",zIndex:2,pointerEvents:"none"}}>
-          <div style={{position:"absolute",top:4,left:4,background:"rgba(200,149,108,0.85)",padding:"3px 8px",fontSize:10,color:"#fff",fontFamily:"Arial,sans-serif",letterSpacing:"0.05em"}}>
-            {Math.round(rect.w)} × {Math.round(rect.h)}
+      {/* Fixed frame — draggable */}
+      {pos&&(
+        <div
+          onMouseDown={onDown} onTouchStart={onDown}
+          style={{position:"absolute",left:pos.x,top:pos.y,width:FRAME_W,height:FRAME_H,border:"2px solid #C8956C",cursor:"grab",zIndex:3,boxSizing:"border-box",
+            boxShadow:"0 0 0 9999px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(200,149,108,0.3)"}}>
+          {/* Corner markers */}
+          {[[0,0,'nw'],[FRAME_W-12,0,'ne'],[0,FRAME_H-12,'sw'],[FRAME_W-12,FRAME_H-12,'se']].map(([x,y,k])=>(
+            <div key={k} style={{position:"absolute",left:x,top:y,width:12,height:12,borderTop:k.includes('n')?'2px solid #C8956C':'none',borderBottom:k.includes('s')?'2px solid #C8956C':'none',borderLeft:k.includes('w')?'2px solid #C8956C':'none',borderRight:k.includes('e')?'2px solid #C8956C':'none'}}/>
+          ))}
+          {/* Center label */}
+          <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",textAlign:"center",pointerEvents:"none"}}>
+            <div style={{color:"rgba(200,149,108,0.7)",fontSize:11,fontFamily:"Arial,sans-serif",letterSpacing:"1px",marginBottom:8}}>DRAG TO POSITION</div>
+            <button onMouseDown={e=>{e.stopPropagation();}} onClick={handleCapture}
+              style={{background:"#C8956C",border:"none",color:"#FDFBF8",padding:"10px 24px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"Arial,sans-serif",letterSpacing:"0.1em",textTransform:"uppercase"}}>
+              Capture This Area
+            </button>
           </div>
         </div>
       )}
@@ -197,7 +223,7 @@ function GlobeCanvas({photos, selectedId, onSelect, width, height, outerRef}){
   useEffect(()=>{
     if(!globeRef.current) return;
     const controls = globeRef.current.controls();
-    controls.autoRotate = true;
+    controls.autoRotate = false;
     controls.autoRotateSpeed = 0.4;
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;

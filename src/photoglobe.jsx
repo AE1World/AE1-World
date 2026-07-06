@@ -178,8 +178,11 @@ function CropOverlay({onCapture, onCancel, globeOuterRef}){
           {/* Center label */}
           <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",textAlign:"center",pointerEvents:"none"}}>
             <div style={{color:"rgba(200,149,108,0.7)",fontSize:11,fontFamily:"Arial,sans-serif",letterSpacing:"1px",marginBottom:8}}>DRAG TO POSITION</div>
-            <button onMouseDown={e=>{e.stopPropagation();}} onClick={handleCapture}
-              style={{background:"#C8956C",border:"none",color:"#FDFBF8",padding:"10px 24px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"Arial,sans-serif",letterSpacing:"0.1em",textTransform:"uppercase"}}>
+            <button
+              onMouseDown={e=>{e.preventDefault();e.stopPropagation();}}
+              onMouseUp={e=>{e.preventDefault();e.stopPropagation();}}
+              onClick={e=>{e.preventDefault();e.stopPropagation();handleCapture();}}
+              style={{background:"#C8956C",border:"none",color:"#FDFBF8",padding:"10px 24px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"Arial,sans-serif",letterSpacing:"0.1em",textTransform:"uppercase",pointerEvents:"all",position:"relative",zIndex:10}}>
               Capture This Area
             </button>
           </div>

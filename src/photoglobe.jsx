@@ -76,7 +76,7 @@ function GlobeCanvas({photos, selectedId, onSelect, width, height, outerRef}){
   const globeRef = useRef();
   const containerRef = useRef();
   useEffect(()=>{
-    if(outerRef) outerRef.current = globeRef;
+    if(outerRef) outerRef.current = {globeRef, containerRef};
   },[outerRef]);
   const [GlobeComponent, setGlobeComponent] = useState(null);
   const [dims, setDims] = useState({w: width || window.innerWidth, h: height || window.innerHeight});
@@ -210,10 +210,10 @@ function buildExportCard(photo,globeDataUrl){
   // Right column
   const right=document.createElement('div');
   right.style.cssText=`width:${rightW-2}px;height:${bodyH}px;display:flex;flex-direction:column;background:#FDFBF8;overflow:hidden;`;
-  // Photo snippet — cropped with object-fit cover
+  // Photo snippet — natural aspect ratio preview, full width
   const photoSnip=document.createElement('div');
-  photoSnip.style.cssText=`width:100%;height:320px;position:relative;background:#2A2420;flex-shrink:0;overflow:hidden;`;
-  if(photo.image_url){const img=document.createElement('img');img.crossOrigin='anonymous';img.style.cssText=`width:100%;height:100%;object-fit:cover;object-position:center top;display:block;`;img.src=photo.image_url;photoSnip.appendChild(img);}
+  photoSnip.style.cssText=`width:100%;position:relative;background:#2A2420;flex-shrink:0;overflow:hidden;`;
+  if(photo.image_url){const img=document.createElement('img');img.crossOrigin='anonymous';img.style.cssText=`width:100%;height:auto;display:block;`;img.src=photo.image_url;photoSnip.appendChild(img);}
   const photoOverlay=document.createElement('div');
   photoOverlay.style.cssText=`position:absolute;bottom:0;left:0;right:0;padding:16px 20px;background:linear-gradient(to top,rgba(26,20,16,0.88) 0%,transparent 100%);`;
   photoOverlay.innerHTML=`<div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:18px;color:#FDFBF8;margin-bottom:3px;line-height:1.2;">${photo.title||''}</div><div style="font-family:Arial,sans-serif;font-size:10px;color:#C8956C;letter-spacing:1.5px;">${(photo.city||'').toUpperCase()}${photo.country?', '+(photo.country).toUpperCase():''}</div>`;
@@ -1052,16 +1052,25 @@ export default function PhotoGlobe({onNavigate}){
         <GlobeCanvas photos={filtered} selectedId={selectedId} onSelect={id=>setSelectedId(selectedId===id?null:id)} outerRef={globeOuterRef}/>
         {sel&&<PhotoDetail photo={sel} onClose={()=>setSelectedId(null)} onLike={handleLike} onDelete={handleDelete} user={user} getGlobeSnapshot={async()=>{
           try{
-            const g=globeOuterRef.current?.current;
-            if(!g) return null;
+            const {globeRef:gRef, containerRef:cRef}=globeOuterRef.current||{};
+            const g=gRef?.current;
+            const container=cRef?.current;
+            if(!g||!container) return null;
             g.controls().autoRotate=false;
-            g.pointOfView({lat:sel.lat,lng:sel.lon,altitude:1.2},1200);
-            await new Promise(r=>setTimeout(r,1400));
-            const renderer=g.renderer();
-            if(!renderer) return null;
-            const dataUrl=renderer.domElement.toDataURL('image/png');
+            g.pointOfView({lat:sel.lat,lng:sel.lon,altitude:1.1},1000);
+            await new Promise(r=>setTimeout(r,1300));
+            const {default:html2canvas}=await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.esm.js');
+            const canvas=await html2canvas(container,{
+              useCORS:true,
+              allowTaint:true,
+              backgroundColor:'#1C2535',
+              scale:1,
+              logging:false,
+              foreignObjectRendering:false,
+            });
+            const dataUrl=canvas.toDataURL('image/png');
             g.controls().autoRotate=true;
-            g.pointOfView({lat:20,lng:-20,altitude:2.2},1000);
+            g.pointOfView({lat:20,lng:-20,altitude:2.2},800);
             return dataUrl;
           }catch(e){console.error('Snapshot error:',e);return null;}
         }}/>}

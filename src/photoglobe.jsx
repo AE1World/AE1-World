@@ -210,10 +210,10 @@ function buildExportCard(photo,globeDataUrl){
   // Right column
   const right=document.createElement('div');
   right.style.cssText=`width:${rightW-2}px;height:${bodyH}px;display:flex;flex-direction:column;background:#FDFBF8;overflow:hidden;`;
-  // Photo snippet — natural aspect ratio preview, full width
+  // Photo snippet — fixed preview box, crops naturally like detail panel thumbnail
   const photoSnip=document.createElement('div');
-  photoSnip.style.cssText=`width:100%;position:relative;background:#2A2420;flex-shrink:0;overflow:hidden;`;
-  if(photo.image_url){const img=document.createElement('img');img.crossOrigin='anonymous';img.style.cssText=`width:100%;height:auto;display:block;`;img.src=photo.image_url;photoSnip.appendChild(img);}
+  photoSnip.style.cssText=`width:100%;height:280px;position:relative;background:#2A2420;flex-shrink:0;overflow:hidden;`;
+  if(photo.image_url){const img=document.createElement('img');img.crossOrigin='anonymous';img.style.cssText=`width:100%;height:100%;object-fit:cover;object-position:center;display:block;`;img.src=photo.image_url;photoSnip.appendChild(img);}
   const photoOverlay=document.createElement('div');
   photoOverlay.style.cssText=`position:absolute;bottom:0;left:0;right:0;padding:16px 20px;background:linear-gradient(to top,rgba(26,20,16,0.88) 0%,transparent 100%);`;
   photoOverlay.innerHTML=`<div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:18px;color:#FDFBF8;margin-bottom:3px;line-height:1.2;">${photo.title||''}</div><div style="font-family:Arial,sans-serif;font-size:10px;color:#C8956C;letter-spacing:1.5px;">${(photo.city||'').toUpperCase()}${photo.country?', '+(photo.country).toUpperCase():''}</div>`;
